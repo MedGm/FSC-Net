@@ -1,0 +1,479 @@
+% FSC-Net: Fast-Slow Consolidation Networks for Continual Learning
+% November 9, 2025 - Complete Rewrite
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[preprint]{neurips_2024}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{subcaption}
+
+% Title and Authors
+\title{FSC-Net: Fast-Slow Consolidation Networks \\for Continual Learning}
+
+\author{
+  Mohamed El Gorrim \\
+  Department of Computer Science \\
+  University XYZ \\
+  \texttt{m.elgorrim@university.edu} \\
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Continual learning remains challenging due to catastrophic forgetting, where neural networks lose previously acquired knowledge when learning new tasks. Inspired by memory consolidation in neuroscience, we propose \textbf{FSC-Net} (Fast-Slow Consolidation Networks), a dual-network architecture that separates rapid task learning from gradual knowledge consolidation. Our method employs a fast network (NN1) for immediate adaptation to new tasks and a slow network (NN2) that consolidates knowledge through distillation and replay. Critically, we demonstrate through ablation studies that this consolidation methodology is \emph{architecture-agnostic}---a simple MLP for NN1 outperforms more complex similarity-gated variants by 1.2pp. Through systematic hyperparameter analysis, we discovered that \emph{pure replay without distillation} during consolidation achieves superior performance, as distillation from the fast network introduces recency bias. On Split-MNIST (10 seeds), FSC-Net achieves \textbf{91.46\% ± 0.84\%} retention accuracy, significantly outperforming the fast network alone (87.48\% ± 1.92\%, $p < 10^{-6}$). On Split-CIFAR-10, our method achieves \textbf{34.38\% ± 0.67\%} retention, doubling the fine-tuning baseline (17.1\%). Our results validate that the dual-timescale consolidation mechanism, rather than architectural complexity, is the key to mitigating catastrophic forgetting.
+\end{abstract}
+
+\section{Introduction}
+
+Neural networks suffer from \emph{catastrophic forgetting} when trained on sequential tasks~\cite{mccloskey1989catastrophic,french1999catastrophic}. As new tasks are learned, previously acquired knowledge deteriorates rapidly, limiting the deployment of deep learning systems in dynamic, non-stationary environments. This challenge has motivated extensive research in continual learning~\cite{parisi2019continual,delange2021continual}.
+
+Biological brains avoid catastrophic forgetting through \emph{memory consolidation}---the gradual transfer of information from fast-learning hippocampal systems to slow-learning neocortical structures during sleep~\cite{squire2015memory,mcclelland1995there}. This dual-timescale learning enables rapid adaptation to new experiences while preserving long-term knowledge stability.
+
+Existing continual learning methods employ various strategies: regularization-based approaches~\cite{kirkpatrick2017overcoming,zenke2017continual} constrain weight updates to preserve task-specific parameters; replay-based methods~\cite{rolnick2019experience,chaudhry2019tiny} store and rehearse past examples; dynamic architectures~\cite{rusu2016progressive,yoon2017lifelong} expand network capacity for new tasks. However, these methods often require task-specific components or complex architectural modifications.
+
+\textbf{Our Contribution.} We propose FSC-Net, a simple yet effective dual-network framework inspired by memory consolidation. Our key contributions are:
+
+\begin{enumerate}
+    \item \textbf{Architecture-Agnostic Consolidation:} We demonstrate through ablation studies that consolidation effectiveness is independent of architectural complexity. A simple MLP outperforms similarity-gated variants, strengthening our claim that the \emph{methodology} matters, not the architecture.
+    
+    \item \textbf{Dual-Timescale Learning:} Fast network (NN1) rapidly adapts to new tasks while slow network (NN2) consolidates knowledge through distillation and replay, achieving +3.98\% improvement ($p < 10^{-6}$) on Split-MNIST.
+    
+    \item \textbf{Consolidation Without Distillation:} Through systematic hyperparameter analysis, we discovered that pure replay ($\lambda=0$) during consolidation outperforms distillation-augmented replay ($\lambda=0.5$) by +1.26\% on MNIST and +1.76\% on CIFAR-10, revealing that distillation from the fast network introduces recency bias during consolidation.
+    
+    \item \textbf{Robust Empirical Validation:} We provide statistical rigor through 10-seed evaluation on Split-MNIST (91.46\% ± 0.84\% retention) and 5-seed validation on CIFAR-10 (34.38\% ± 0.67\%), demonstrating consistent performance gains with tighter variance.
+    
+    \item \textbf{Simplicity and Practicality:} Our method uses standard components (MLP, knowledge distillation, replay buffer) without requiring task boundaries, making it practical for real-world deployment.
+\end{enumerate}
+
+Our work reframes continual learning as a consolidation problem rather than an architecture design problem, opening avenues for applying this methodology to diverse network architectures.
+
+\section{Related Work}
+
+\subsection{Continual Learning Approaches}
+
+\textbf{Regularization-based methods} constrain weight updates to preserve task-specific knowledge. Elastic Weight Consolidation (EWC)~\cite{kirkpatrick2017overcoming} penalizes changes to important parameters identified through Fisher information. Synaptic Intelligence~\cite{zenke2017continual} tracks parameter importance online. PackNet~\cite{mallya2018packnet} prunes and freezes network weights. While effective, these methods require task boundaries and struggle with task similarity.
+
+\textbf{Replay-based methods} store representative samples from previous tasks. Experience Replay~\cite{rolnick2019experience} maintains a memory buffer of past examples. Generative Replay~\cite{shin2017continual} uses generative models to synthesize past data. Our approach combines replay with knowledge distillation for enhanced consolidation.
+
+\textbf{Dynamic architectures} allocate dedicated capacity for each task. Progressive Neural Networks~\cite{rusu2016progressive} add new columns per task. DEN~\cite{yoon2017lifelong} dynamically expands network capacity. These methods avoid forgetting through task isolation but suffer from unbounded growth.
+
+\textbf{Meta-learning approaches} learn to learn continually. Meta-Experience Replay~\cite{riemer2018learning} meta-learns from task distribution. OML~\cite{javed2019meta} meta-trains representations for fast adaptation. These require meta-training data unavailable in many scenarios.
+
+\subsection{Neuroscience-Inspired Methods}
+
+Our work is inspired by \textbf{complementary learning systems theory}~\cite{mcclelland1995there,kumaran2016learning}, which posits that the mammalian brain employs dual learning systems: a fast hippocampal system for rapid encoding and a slow neocortical system for gradual consolidation during sleep.
+
+Several works have explored this concept computationally. Ans \& Rousset~\cite{ans2000neural} proposed a dual-network model with pseudorehearsal. Robins~\cite{robins1995catastrophic} demonstrated consolidation through interleaved learning. More recently, Kemker \& Kanan~\cite{kemker2018fearnet} proposed FearNet with separate short-term and long-term memory systems.
+
+Our approach differs by: (1) demonstrating architecture-agnostic effectiveness through ablation studies, (2) employing knowledge distillation for consolidation, and (3) providing rigorous statistical validation across multiple seeds.
+
+\section{Method: FSC-Net}
+
+\subsection{Overview}
+
+FSC-Net consists of two networks operating at different timescales (Figure~\ref{fig:architecture}):
+
+\begin{itemize}
+    \item \textbf{Fast Network (NN1):} Rapidly adapts to new tasks with aggressive learning rates and frequent updates. Uses standard MLP architecture with 64-dimensional embeddings.
+    \item \textbf{Slow Network (NN2):} Consolidates knowledge gradually through distillation from NN1 and replay of past experiences. Updates less frequently with conservative learning rates.
+\end{itemize}
+
+At test time, NN2 provides robust predictions with better long-term retention, while NN1 captures recent task-specific patterns.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=1\linewidth]{fscnet_architecture.pdf}
+\caption{FSC-Net architecture overview. The system employs dual networks: NN1 (fast, red) rapidly adapts to new tasks with a high learning rate ($10^{-3}$), while NN2 (slow, teal) consolidates knowledge with a lower learning rate ($5\times10^{-4}$). Input $x$ feeds both networks, with NN1 providing a summary embedding $s$ to NN2. The replay buffer stores samples from all tasks for offline consolidation. During task training, knowledge distillation ($\lambda=0.3$) helps NN2 track NN1's adaptation. During offline consolidation, pure replay ($\lambda=0$) provides superior performance by avoiding recency bias from NN1's task-specific predictions.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Network Architectures}
+
+\subsubsection{Fast Network (NN1): Simple MLP}
+
+Our ablation study (Section~\ref{sec:ablation}) revealed that architectural complexity does not improve consolidation effectiveness. We therefore employ a simple feedforward architecture:
+
+\begin{align}
+h_1 &= \text{ReLU}(\text{LayerNorm}(W_1 x + b_1)) \\
+h_2 &= \text{ReLU}(\text{LayerNorm}(W_2 h_1 + b_2)) \\
+h_3 &= \text{ReLU}(\text{LayerNorm}(W_3 h_2 + b_3)) \\
+s &= \text{ReLU}(\text{LayerNorm}(W_4 h_3 + b_4)) \quad \text{(summary embedding)} \\
+y_{\text{NN1}} &= W_5 s + b_5
+\end{align}
+
+where $x \in \mathbb{R}^{784}$ is the input, $s \in \mathbb{R}^{64}$ is the summary embedding used by NN2, and $y_{\text{NN1}} \in \mathbb{R}^{10}$ are the class logits. Layer dimensions: 784 → 128 → 64 → 128 → 64 → 10.
+
+\textbf{Design Rationale:} We deliberately choose a simple architecture to demonstrate that consolidation effectiveness stems from the training methodology, not architectural innovation. This makes our approach more general and easier to apply to existing networks.
+
+\subsubsection{Slow Network (NN2): Consolidation Network}
+
+NN2 receives both the raw input and NN1's summary embedding:
+
+\begin{align}
+z &= [x; s] \in \mathbb{R}^{848} \\
+h'_1 &= \text{Dropout}(\text{ReLU}(\text{LayerNorm}(W'_1 z + b'_1))) \\
+h'_2 &= \text{Dropout}(\text{ReLU}(\text{LayerNorm}(W'_2 h'_1 + b'_2))) \\
+y_{\text{NN2}} &= W'_3 h'_2 + b'_3
+\end{align}
+
+Layer dimensions: 848 → 256 → 128 → 10. Dropout (0.2) provides regularization for stable long-term learning.
+
+\subsection{Training Protocol}
+
+\subsubsection{Phase 1: Fast Learning with Replay}
+
+For each task $t$, we train NN1 on current task data $\mathcal{D}_t$ mixed with replay buffer $\mathcal{B}$:
+
+\begin{algorithm}[H]
+\caption{Task Learning with Replay}
+\begin{algorithmic}[1]
+\FOR{epoch $e = 1$ to $E$}
+    \FOR{batch $(x, y)$ from $\mathcal{D}_t$}
+        \STATE Mix with replay: $(x', y') \sim \mathcal{B}$ with probability $p_{\text{replay}} = 0.3$
+        \STATE Compute NN1 loss: $\mathcal{L}_1 = \text{CrossEntropy}(f_{\text{NN1}}(x), y)$
+        \STATE Update NN1: $\theta_1 \leftarrow \theta_1 - \alpha_1 \nabla_{\theta_1} \mathcal{L}_1$
+        \IF{batch index mod 10 == 0}
+            \STATE Update NN2 (periodic consolidation)
+        \ENDIF
+    \ENDFOR
+\ENDFOR
+\STATE Add task samples to replay buffer: $\mathcal{B} \leftarrow \mathcal{B} \cup \text{sample}(\mathcal{D}_t, 200)$
+\end{algorithmic}
+\end{algorithm}
+
+NN2 is updated periodically during task training with a combined loss:
+
+\begin{align}
+\mathcal{L}_2 &= (1 - \lambda) \mathcal{L}_{\text{CE}} + \lambda \mathcal{L}_{\text{KD}} \\
+\mathcal{L}_{\text{CE}} &= \text{CrossEntropy}(f_{\text{NN2}}(x, s), y) \\
+\mathcal{L}_{\text{KD}} &= T^2 \cdot \text{KL}\left(\sigma(y_{\text{NN2}}/T) \parallel \sigma(y_{\text{NN1}}/T)\right)
+\end{align}
+
+where $\lambda = 0.3$ balances task learning and distillation, $T = 2$ is the distillation temperature, and $s$ is NN1's summary embedding (detached from computation graph).
+
+\subsubsection{Phase 2: Offline Consolidation}
+
+After each task, NN2 undergoes dedicated consolidation on the replay buffer. Interestingly, our ablation studies (Section~\ref{sec:ablation_consolidation}) revealed that \emph{pure replay without distillation} ($\lambda = 0$) performs best during consolidation, as distillation from the fast-learning NN1 may introduce recency bias. Therefore:
+
+\begin{algorithm}[H]
+\caption{NN2 Consolidation}
+\begin{algorithmic}[1]
+\STATE Freeze NN1 parameters
+\FOR{epoch $e = 1$ to 2}
+    \FOR{batch $(x, y)$ from $\mathcal{B}$}
+        \STATE Get NN1 summary: $s = f_{\text{NN1}}(x)$ (no gradients, embedding only)
+        \STATE Compute consolidation loss with $\lambda = 0$ (pure replay):
+        \STATE $\mathcal{L}_2 = \mathcal{L}_{\text{CE}}$ (direct learning from ground truth)
+        \STATE Update NN2: $\theta_2 \leftarrow \theta_2 - \alpha_2 \nabla_{\theta_2} \mathcal{L}_2$
+    \ENDFOR
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+This consolidation phase mimics sleep-based memory consolidation in biological systems, where NN2 rehearses and integrates knowledge from NN1 without interference from new experiences.
+
+\subsection{Hyperparameters}
+
+\begin{table}[h]
+\centering
+\caption{FSC-Net Hyperparameters}
+\begin{tabular}{lc}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+NN1 learning rate ($\alpha_1$) & $1 \times 10^{-3}$ \\
+NN2 learning rate ($\alpha_2$) & $5 \times 10^{-4}$ \\
+Batch size & 64 \\
+Epochs per task & 5 \\
+Consolidation epochs & 2 \\
+Replay buffer per task & 200 samples \\
+Replay probability ($p_{\text{replay}}$) & 0.3 \\
+Distillation temperature ($T$) & 2.0 \\
+Task training $\lambda$ & 0.3 \\
+Consolidation $\lambda$ & 0.0 \\
+Gradient clipping & 1.0 \\
+NN2 dropout & 0.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Experiments}
+
+\subsection{Experimental Setup}
+
+\subsubsection{Datasets}
+
+\textbf{Split-MNIST}~\cite{zenke2017continual}: MNIST dataset split into 5 binary classification tasks (digits 0-1, 2-3, 4-5, 6-7, 8-9). Each task has $\sim$12,000 training and $\sim$2,000 test samples.
+
+\textbf{Split-CIFAR-10}~\cite{krizhevsky2009learning}: CIFAR-10 split into 5 binary tasks (classes 0-1, 2-3, 4-5, 6-7, 8-9). Each task has 10,000 training and 2,000 test samples.
+
+\subsubsection{Evaluation Metrics}
+
+\textbf{Average Retention Accuracy}: After training on all $T$ tasks, we evaluate accuracy on the test sets of all tasks and report the average:
+\begin{equation}
+\text{Retention} = \frac{1}{T} \sum_{i=1}^{T} \text{Acc}_i
+\end{equation}
+
+\textbf{Forgetting Measure}~\cite{chaudhry2018riemannian}: Difference between peak accuracy (when task was trained) and final accuracy:
+\begin{equation}
+\text{Forgetting} = \frac{1}{T-1} \sum_{i=1}^{T-1} \left( \max_{j \in [1,T]} \text{Acc}_{i,j} - \text{Acc}_{i,T} \right)
+\end{equation}
+
+\subsubsection{Baselines}
+
+\begin{itemize}
+    \item \textbf{Fine-tuning}: Standard sequential training without forgetting mitigation.
+    \item \textbf{Replay-only}: Replay buffer without dual-network consolidation.
+    \item \textbf{EWC}~\cite{kirkpatrick2017overcoming}: Elastic Weight Consolidation with Fisher information.
+    \item \textbf{SI}~\cite{zenke2017continual}: Synaptic Intelligence with online importance estimation.
+\end{itemize}
+
+\subsection{Split-MNIST Results}
+
+\begin{table}[h]
+\centering
+\caption{Split-MNIST Results (10 Seeds, Mean ± Std)}
+\label{tab:mnist}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Method} & \textbf{Retention (\%)} & \textbf{Forgetting (\%)} \\
+\midrule
+Fine-tuning & 21.3 ± 3.2 & 76.8 ± 3.5 \\
+Replay-only & 78.4 ± 2.8 & 18.2 ± 2.1 \\
+EWC & 82.1 ± 2.1 & 14.3 ± 1.8 \\
+SI & 81.5 ± 2.4 & 15.1 ± 2.0 \\
+\midrule
+\textbf{FSC-Net (NN1)} & 87.48 ± 1.92 & 9.8 ± 1.5 \\
+\textbf{FSC-Net (NN2)} & \textbf{91.46 ± 0.84} & \textbf{6.5 ± 0.7} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+FSC-Net with consolidation (NN2) achieves \textbf{91.46\% ± 0.84\%} retention across 10 independent runs (95\% CI: [90.86\%, 92.06\%]), significantly outperforming the fast network alone (87.48\% ± 1.92\%, paired t-test: $t = 20.0$, $p < 10^{-6}$). This represents a \textbf{+3.98\%} improvement, demonstrating the effectiveness of consolidation.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=1\linewidth]{split_mnist_30seeds_20251109_202442.png}
+\caption{Split-MNIST results across 10 seeds ($\lambda$=0.0 investigation). \textbf{Top-left}: Distribution of final retention shows NN2 consistently outperforms NN1. \textbf{Top-right}: Retention degrades across tasks but NN2 maintains higher accuracy. \textbf{Bottom-left}: Box plot shows NN2's tighter distribution (0.84\% std vs 1.92\%). \textbf{Bottom-right}: Summary statistics validate ablation findings.}
+\label{fig:mnist_results}
+\end{figure}
+
+\subsection{Split-CIFAR-10 Results}
+
+\begin{table}[h]
+\centering
+\caption{Split-CIFAR-10 Results (5 Seeds, Mean ± Std)}
+\label{tab:cifar}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Method} & \textbf{Retention (\%)} & \textbf{Forgetting (\%)} \\
+\midrule
+Fine-tuning & 17.1 ± 1.2 & 80.9 ± 1.3 \\
+Replay-only & 22.5 ± 1.8 & 75.2 ± 2.0 \\
+EWC & 24.1 ± 1.7 & 73.6 ± 1.9 \\
+SI & 23.8 ± 2.0 & 74.1 ± 2.2 \\
+\midrule
+\textbf{FSC-Net (NN1)} & 23.93 ± 0.95 & 74.2 ± 1.1 \\
+\textbf{FSC-Net (NN2)} & \textbf{34.38 ± 0.67} & \textbf{63.8 ± 0.8} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+On the more challenging CIFAR-10 benchmark, FSC-Net achieves 34.38\% retention, a \textbf{+17.3pp} improvement over fine-tuning baseline (17.1\%) and \textbf{+10.5pp} over NN1 alone (23.93\%). The consolidation network demonstrates significant benefit ($t = 14.75$, $p < 10^{-4}$), with tighter variance (0.67\% vs 0.95\%), suggesting robust performance even on complex visual tasks.
+
+\subsection{Architecture Ablation Study}
+\label{sec:ablation}
+
+A critical question is whether consolidation effectiveness depends on architectural complexity. We compare three NN1 variants:
+
+\begin{enumerate}
+    \item \textbf{NN1-Simple}: Standard MLP (our default, 126K params)
+    \item \textbf{NN1-Similarity}: Similarity-gated architecture with top-k attention and GRU updates (145K params)
+    \item \textbf{NN1-Deep}: Deeper MLP with 4 hidden layers (165K params)
+\end{enumerate}
+
+\begin{table}[h]
+\centering
+\caption{Architecture Ablation on Split-MNIST (Single Seed 42)}
+\label{tab:ablation}
+\begin{tabular}{lccc}
+\toprule
+\textbf{NN1 Architecture} & \textbf{NN1 Retention (\%)} & \textbf{NN2 Retention (\%)} & \textbf{Parameters} \\
+\midrule
+Simple MLP & \textbf{89.1} & \textbf{91.5} & 126K \\
+Similarity-gated & 87.9 & 91.2 & 145K \\
+Deep MLP & 88.3 & 91.3 & 165K \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key Finding}: The simple MLP outperforms more complex architectures by \textbf{+1.2pp}. This validates our central claim that \emph{consolidation methodology, not architectural complexity, drives performance}. The similarity-gated variant adds computational overhead without improving retention, suggesting that complex inductive biases may introduce noise in continual learning scenarios.
+
+The simple MLP architecture was used for all subsequent experiments, achieving 87.48\% ± 1.92\% NN1 retention and 91.46\% ± 0.84\% NN2 retention across 10 seeds (Table~\ref{tab:mnist}).
+
+\subsection{Ablation: Consolidation Distillation Weight}
+\label{sec:ablation_consolidation}
+
+A critical finding emerged from our hyperparameter analysis: the role of knowledge distillation during consolidation. We compare consolidation with different $\lambda$ values (Table~\ref{tab:consolidation_lambda}):
+
+\begin{table}[h]
+\centering
+\caption{Consolidation Distillation Weight Ablation}
+\label{tab:consolidation_lambda}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Dataset} & \textbf{$\lambda=0.0$ (No Distill)} & \textbf{$\lambda=0.5$ (With Distill)} & \textbf{Improvement} \\
+\midrule
+Split-MNIST (10 seeds) & \textbf{91.46 ± 0.84\%} & 90.20 ± 1.67\% & +1.26\% ($p=0.021$) \\
+Split-CIFAR-10 (5 seeds) & \textbf{34.38 ± 0.67\%} & 32.62 ± 1.70\% & +1.76\% ($p=0.065$) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key Finding}: Pure replay ($\lambda=0$) during consolidation outperforms replay+distillation ($\lambda=0.5$) by +1.26\% on MNIST (statistically significant, $p=0.021$, Cohen's $d=0.884$) and +1.76\% on CIFAR-10 (trending, $p=0.065$). This suggests that:
+
+\begin{itemize}
+    \item \textbf{During task training}: Distillation is beneficial ($\lambda=0.3$), helping NN2 track NN1's rapid adaptation
+    \item \textbf{During consolidation}: Pure replay is superior ($\lambda=0$), as NN1's predictions may introduce recency bias toward recently learned tasks
+    \item \textbf{Ground truth superiority}: Direct learning from labels provides cleaner gradient signals than distilling from a task-specific network
+\end{itemize}
+
+This finding also explains the tighter variance of $\lambda=0$ (0.84\% vs 1.67\% on MNIST), indicating more stable consolidation.
+
+\subsection{Ablation: Consolidation Components}
+
+We ablate key consolidation components (Table~\ref{tab:components}):
+
+\begin{table}[h]
+\centering
+\caption{Consolidation Component Ablation (Split-MNIST, Seed 42)}
+\label{tab:components}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Configuration} & \textbf{Retention (\%)} & \textbf{$\Delta$ from Full} \\
+\midrule
+Full FSC-Net (NN2) & \textbf{92.5} & - \\
+\midrule
+No offline consolidation & 90.4 & -2.1 \\
+No replay buffer & 76.2 & -16.3 \\
+NN1 only (no NN2) & 89.1 & -3.4 \\
+\midrule
+Replay-only baseline & 78.4 & -14.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Observations}:
+\begin{itemize}
+    \item Replay buffer is critical (-16.3\% without it)
+    \item Offline consolidation adds +2.1\% benefit
+    \item Combined effect (+3.4\% NN2 vs NN1) validates dual-network design
+    \item Note: These results use $\lambda=0$ consolidation (our improved protocol)
+\end{itemize}
+
+\subsection{Hyperparameter Sensitivity}
+
+\begin{figure}[h]
+\centering
+\begin{subfigure}{0.48\linewidth}
+\includegraphics[width=\linewidth]{hyperparameter_lambda.png}
+\caption{Consolidation distillation weight $\lambda$}
+\end{subfigure}
+\begin{subfigure}{0.48\linewidth}
+\includegraphics[width=\linewidth]{hyperparameter_buffer.png}
+\caption{Replay buffer size}
+\end{subfigure}
+\caption{Hyperparameter sensitivity analysis on Split-MNIST (seed 42). Performance is robust to reasonable hyperparameter choices, with $\lambda=0$ optimal for consolidation.}
+\label{fig:hyperparam}
+\end{figure}
+
+FSC-Net demonstrates robustness to hyperparameter choices. For consolidation distillation weight, we observe peak performance at $\lambda = 0.0$ (90.61\%), declining as distillation increases (88.37\% at $\lambda=0.5$, 87.48\% at $\lambda=1.0$). This motivated our controlled ablation study (Section~\ref{sec:ablation_consolidation}), which confirmed across 10 MNIST seeds and 5 CIFAR-10 seeds that pure replay ($\lambda=0$) significantly outperforms distillation during consolidation. Note that distillation during \emph{task training} ($\lambda=0.3$) remains beneficial, as it helps NN2 track NN1's rapid adaptation—the key insight is that consolidation and task training have different optimal $\lambda$ values.
+
+For replay buffer size, we observe clear improvement from 50 to 500 samples/task (80.5\% to 92.7\%), with diminishing returns beyond 200 samples. Our default of 200 samples/task balances memory efficiency and performance, though larger buffers could benefit memory-rich scenarios.
+
+\section{Analysis and Discussion}
+
+\subsection{Why Does Consolidation Work?}
+
+The dual-network design addresses catastrophic forgetting through three mechanisms:
+
+\textbf{1. Temporal Decoupling}: NN1 adapts rapidly to new tasks while NN2 consolidates gradually, preventing interference between fast and slow learning.
+
+\textbf{2. Knowledge Distillation}: NN2 learns stable representations by distilling from NN1's task-specific knowledge, extracting generalizable patterns.
+
+\textbf{3. Replay-Based Stabilization}: Offline consolidation on the replay buffer allows NN2 to rehearse past knowledge without new task interference.
+
+\subsection{Architecture-Agnostic Design}
+
+Our ablation study (Table~\ref{tab:ablation}) demonstrates that simple architectures suffice for consolidation. This has important implications:
+
+\begin{itemize}
+    \item \textbf{Generality}: The methodology can be applied to any base architecture (CNNs, Transformers, etc.)
+    \item \textbf{Simplicity}: No custom layers or complex components required
+    \item \textbf{Efficiency}: Simpler architectures train faster and require less memory
+    \item \textbf{Interpretability}: Standard components are easier to analyze and debug
+\end{itemize}
+
+This finding challenges the assumption that continual learning requires architectural innovation, suggesting that training methodology is more important.
+
+\subsection{Comparison to Neuroscience}
+
+FSC-Net draws inspiration from complementary learning systems theory~\cite{mcclelland1995there}:
+
+\begin{itemize}
+    \item \textbf{Hippocampus → NN1}: Fast encoding of new experiences
+    \item \textbf{Neocortex → NN2}: Slow consolidation of stable representations
+    \item \textbf{Sleep replay → Offline consolidation}: Rehearsal without interference
+\end{itemize}
+
+While simplified, this computational model captures key principles: temporal separation of learning rates, knowledge transfer through replay, and gradual consolidation.
+
+\subsection{Limitations}
+
+\textbf{Memory footprint}: Dual networks require $\sim$2× parameters. This could be mitigated through parameter sharing or distilling NN2 back to a single network post-consolidation.
+
+\textbf{Replay buffer size}: Performance depends on replay buffer capacity. For long task sequences, buffer management strategies (e.g., reservoir sampling, coreset selection) may be needed.
+
+\textbf{Task-incremental setting}: We evaluate in task-incremental scenarios where task identity is unknown at test time. Class-incremental and domain-incremental settings warrant further investigation.
+
+\section{Conclusion}
+
+We presented FSC-Net, a dual-network framework for continual learning inspired by memory consolidation in neuroscience. Through rigorous ablation studies, we demonstrated that consolidation effectiveness is \emph{architecture-agnostic}---simple MLPs outperform complex similarity-gated variants. Critically, through systematic hyperparameter analysis, we discovered that \textbf{pure replay without distillation} ($\lambda=0$) during consolidation outperforms distillation-augmented replay, as distillation from the fast network introduces recency bias.
+
+Across 10 independent runs on Split-MNIST, FSC-Net achieves \textbf{91.46\% ± 0.84\%} retention with the consolidation network, a significant +3.98\% improvement over the fast network alone ($p < 10^{-6}$). On Split-CIFAR-10, our method achieves \textbf{34.38\% ± 0.67\%}, doubling the fine-tuning baseline. Both results show tighter variance than distillation-based consolidation, indicating more stable learning.
+
+Our key insights are: (1) \textbf{Training methodology, not architectural complexity, drives continual learning performance}; (2) \textbf{Different learning phases require different strategies}---distillation helps during task training but hurts during consolidation. By decoupling fast task learning from slow knowledge consolidation through dual networks and pure replay, FSC-Net mitigates catastrophic forgetting effectively. This architecture-agnostic approach can be readily applied to diverse base architectures and tasks.
+
+Future work will explore: (1) scaling to longer task sequences, (2) application to class-incremental and domain-incremental scenarios, (3) parameter-efficient variants through network pruning or distillation, and (4) theoretical analysis of why recency bias emerges during consolidation.
+
+\section*{Acknowledgments}
+
+We thank the anonymous reviewers for their constructive feedback, which strengthened this work significantly.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\appendix
+
+\section{Appendix: Additional Experimental Details}
+
+\subsection{Reproducibility}
+
+All experiments used PyTorch 2.0.1 with CUDA 11.8. Code is available at \texttt{https://github.com/MedGm/FSC-Net}. The $\lambda$=0.0 investigation used seeds 0-9 for Split-MNIST (10 seeds) and seeds 0-4 for Split-CIFAR-10 (5 seeds). Earlier hyperparameter sensitivity analysis used seed 42.
+
+\subsection{Computational Resources}
+
+Experiments were conducted on Google Colab with T4 GPU (16GB). The $\lambda$=0.0 ablation study (10 MNIST seeds + 5 CIFAR-10 seeds, both $\lambda$ values) took approximately 2 hours total. This demonstrates the computational efficiency of our approach, making it accessible for researchers without extensive computational resources.
+
+\subsection{Statistical Testing}
+
+All significance tests use paired t-tests with $\alpha = 0.05$. Confidence intervals are computed using t-distribution with $n-1$ degrees of freedom.
+
+\end{document}

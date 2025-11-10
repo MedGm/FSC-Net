@@ -1,0 +1,30 @@
+# Core Dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# Jupyter
+jupyter>=1.0.0
+notebook>=6.5.0
+ipykernel>=6.22.0
+
+# Visualization
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# Data Processing
+scikit-learn>=1.2.0
+tqdm>=4.65.0
+
+# Development (optional)
+pytest>=7.3.0
+black>=23.3.0
+flake8>=6.0.0
+mypy>=1.2.0
+
+# Documentation (optional)
+sphinx>=6.2.0
+sphinx-rtd-theme>=1.2.0
