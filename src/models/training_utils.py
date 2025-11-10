@@ -179,7 +179,7 @@ def consolidate_nn2(nn1, nn2, replay_data, opt2, ce_loss, kl_loss,
                     device='cuda',
                     consolidation_epochs=2,
                     batch_size=64,
-                    lambda_distill=0.5,
+                    lambda_distill=0,
                     temperature=2.0,
                     grad_clip=1.0):
     """

@@ -1,8 +1,8 @@
-# FSSG-Net: Fast-Slow Similarity-Gated Networks
+# FSC-Net: Fast-Slow Consolidation Networks
 
 **A Dual-Timescale Neural Architecture for Continual Learning and Catastrophic Forgetting Mitigation**
 
-![FSSG-Net Architecture](results/simple_mlp/figures/fsc-net%20architecture.png)
+![FSC-Net Architecture](results/simple_mlp/figures/fsc-net%20architecture.png)
 
 
 
@@ -27,39 +27,33 @@
 
 ## 🎯 Overview
 
-FSSG-Net is a novel dual-timescale neural architecture that mitigates catastrophic forgetting in continual learning scenarios. The architecture consists of:
+FSC-Net is a dual-timescale continual-learning framework. The system separates rapid plasticity from slow consolidation:
 
-- **Fast Network (NN1)**: Rapidly adapts to new tasks through similarity-gated neuron interactions
-- **Slow Network (NN2)**: Consolidates knowledge periodically via knowledge distillation, providing stable long-term retention
+- **Fast Network (NN1)**: A lightweight MLP that adapts quickly to incoming tasks and produces a 64-D summary embedding.
+- **Slow Network (NN2)**: A consolidation network that ingests the raw input and NN1’s summary, then rehearses replayed data to stabilise long-term knowledge.
 
-**State-of-the-art Performance:**
-- Split-MNIST: 88.3% retention (+9.6pp over iCaRL)
-- Permuted MNIST: 91.6% retention
-- Rotated MNIST: 89.1% retention  
-- CIFAR-10: 29.0% retention (+9.4pp improvement over NN1)
+**Headline Results (from the NeurIPS submission):**
+- Split-MNIST (10 seeds): NN2 reaches **91.46% ± 0.84%** retention vs. NN1’s 87.48% ± 1.92% (paired $p < 10^{-6}$).
+- Split-CIFAR-10 (5 seeds): NN2 delivers **34.38% ± 0.67%** retention, improving by ~10.5 points over NN1.
 
-**Statistical Validation:**
-- p = 0.0011 (highly significant, p < 0.01)
-- 100% win rate across 5 random seeds
-- Consistent superiority across all benchmarks
+**Key Insight:** Offline consolidation performs best with **pure replay (λ = 0)**—distillation during consolidation reintroduces recency bias. Knowledge distillation remains helpful during task training (λ = 0.3).
 
 ---
 
 ## ✨ Key Features
 
-- **Dual-Timescale Learning**: Asynchronous update schedules for plasticity-stability balance
-- **Similarity-Gated Routing**: Top-K attention mechanism for neuron-to-neuron communication
-- **Dedicated Consolidation**: Periodic NN2-only training phases on replay buffer
-- **Knowledge Distillation**: Cross-network learning (NN1 → NN2) for stable representations
-- **Memory Efficient**: 200 samples/task (same as GEM, less than iCaRL's 1000)
-- **Scalable**: Validated from MNIST grayscale to CIFAR-10 color images
+- **Dual-timescale optimisation**: NN1 updates rapidly while NN2 consolidates cautiously, reducing interference.
+- **Architecture-agnostic methodology**: Simple MLPs match or beat more complex NN1 variants; the consolidation protocol is the differentiator.
+- **Pure replay consolidation**: Offline phases use λ = 0 to avoid recency bias; distillation is reserved for in-task updates (λ = 0.3).
+- **Replay-efficient**: 200 samples per task are enough to reach the reported Split-MNIST results.
+- **Statistically validated**: Results averaged over 10 (MNIST) and 5 (CIFAR-10) seeds, complete with paired t-tests.
 
 ---
 
 ## 📁 Repository Structure
 
 ```
-FSSGNET/
+FSCNET/
 ├── data/                          # Datasets and archives (auto-downloaded)
 │   ├── MNIST/                     # MNIST dataset
 │   └── cifar-10-batches-py/       # CIFAR-10 dataset
@@ -109,8 +103,8 @@ FSSGNET/
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/MedGm/FSSGNET.git
-cd FSSGNET
+git clone https://github.com/MedGm/FSCNET.git
+cd FSCNET
 ```
 
 2. **Create virtual environment:**
@@ -142,7 +136,7 @@ See `requirements.txt` for complete list.
 
 ### Running Experiments
 
-**1. Architecture Ablation (NN1 focus):**
+**1. Architecture ablation (NN1 focus):**
 ```bash
 jupyter notebook notebooks/ablation_nn1_architecture.ipynb
 ```
@@ -151,7 +145,7 @@ Investigates the transition from similarity-gated routing to the simpler MLP bas
 **2. Simple MLP experiment suite:**
 Open any notebook under `notebooks/simple_mlp_experiments/` (e.g. `split_mnist_30seeds.ipynb`, `cifar10_5seeds.ipynb`, `hyperparameter_sensitivity.ipynb`, `lambda_zero_investigation.ipynb`) to reproduce the continual-learning benchmarks.
 
-### Using the FSSG-Net API
+### Using the FSC-Net API
 
 ```python
 import torch
@@ -186,7 +180,8 @@ for task_id, (train_loader, test_loader) in enumerate(tasks):
 
   consolidate_nn2(
     nn1, nn2, buffer.get_dataset(), opt2,
-    ce_loss, kl_loss, device=device
+    ce_loss, kl_loss, device=device,
+    lambda_distill=0.0  # pure replay during consolidation
   )
 
   acc1, acc2 = evaluate_models(nn1, nn2, test_loader, device=device)
@@ -199,35 +194,27 @@ for task_id, (train_loader, test_loader) in enumerate(tasks):
 
 ### Benchmark Performance
 
-| Benchmark | Tasks | NN1 | NN2 | Improvement | Significance |
-|-----------|-------|-----|-----|-------------|--------------|
-| **Split-MNIST** | 5 | 85.5% | **88.3%** | +2.8pp | p=0.0011 |
-| **Permuted MNIST** | 10 | 91.3% | **91.6%** | +0.3pp | - |
-| **Rotated MNIST** | 5 | 88.8% | **89.1%** | +0.4pp | - |
-| **CIFAR-10** | 5 | 19.6% | **29.0%** | +9.4pp | - |
+| Benchmark | Tasks | NN1 Retention | NN2 Retention | Improvement | Notes |
+|-----------|-------|---------------|---------------|-------------|-------|
+| **Split-MNIST** | 5 | 87.48% ± 1.92% | **91.46% ± 0.84%** | +3.98pp | 10 seeds, paired $p < 10^{-6}$ |
+| **Split-CIFAR-10** | 5 | 23.93% ± 0.95% | **34.38% ± 0.67%** | +10.45pp | 5 seeds, paired $p = 0.0003$ |
 
-### Baseline Comparisons (Split-MNIST)
+### Baseline Comparisons (Split-MNIST, 10 seeds)
 
-| Method | Type | Memory | Retention | vs FSSG-NN2 |
-|--------|------|--------|-----------|-------------|
-| Naive | Fine-tuning | None | 0.0% | **+88.3pp** |
-| EWC | Regularization | None | 0.0% | **+88.3pp** |
-| GEM | Gradient Proj. | 200/task | 66.5% | **+21.8pp** |
-| iCaRL | Distillation | 1000 total | 78.7% | **+9.6pp** |
-| FSSG-NN1 | Fast Only | 200/task | 85.5% | **+2.8pp** |
-| **FSSG-NN2** | **Dual-Net** | **200/task** | **88.3%** | **BEST** |
+| Method | Retention (± std) | Forgetting (± std) |
+|--------|-------------------|---------------------|
+| Fine-tuning | 21.3% ± 3.2% | 76.8% ± 3.5% |
+| Replay-only | 78.4% ± 2.8% | 18.2% ± 2.1% |
+| EWC | 82.1% ± 2.1% | 14.3% ± 1.8% |
+| SI | 81.5% ± 2.4% | 15.1% ± 2.0% |
+| **FSC-Net (NN1)** | 87.48% ± 1.92% | 9.8% ± 1.5% |
+| **FSC-Net (NN2)** | **91.46% ± 0.84%** | **6.5% ± 0.7%** |
 
 ### Key Findings
 
-1. **Task Difficulty Scaling**: NN2's advantage increases with task complexity
-   - Permuted MNIST (easy): +0.3pp
-   - Rotated MNIST (medium): +0.4pp
-   - Split-MNIST (hard): +2.8pp
-   - CIFAR-10 (hardest): **+9.4pp** ⭐
-
-2. **Consolidation is Critical**: Without dedicated consolidation phase, NN2 < NN1 (84.6% vs 85.5%)
-
-3. **Replay is Essential**: Without experience replay, both NN1 and NN2 achieve 0% retention
+1. **Methodology over architecture**: Simple NN1 MLPs outperform similarity-gated variants by ~1.2pp.
+2. **Pure replay wins**: Consolidation with λ = 0 yields +1.26pp on MNIST (significant) and +1.76pp on CIFAR-10 (trending) versus λ = 0.5.
+3. **Replay buffer is indispensable**: Removing offline consolidation or replay erodes NN2’s advantage (see paper Table 6).
 
 ---
 
@@ -236,8 +223,8 @@ for task_id, (train_loader, test_loader) in enumerate(tasks):
 If you use this code in your research, please cite:
 
 ```bibtex
-@article{elgorrim2025fssgnet,
-  title={Fast-Slow Similarity-Gated Networks (FSSG-Net): A Dual-Timescale Neural Architecture for Continual Learning and Catastrophic Forgetting Mitigation},
+@article{elgorrim2025fscnet,
+  title={Fast-Slow Consolidation Networks (FSC-Net): A Dual-Timescale Neural Architecture for Continual Learning and Catastrophic Forgetting Mitigation},
   author={El Gorrim, Mohamed},
   year={2025},
   note={Under Review}
