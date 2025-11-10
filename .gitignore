@@ -53,9 +53,6 @@ data/cifar-10-batches-py/
 *.tar.gz
 *.zip
 
-# Result figures (keep CSVs, ignore large figures)
-results/**/figures/*.png
-
 # Logs
 *.log
 logs/
