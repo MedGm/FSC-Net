@@ -5,11 +5,15 @@ Replay buffer, training loops, and consolidation functions for continual
 learning experiments.
 """
 
+import math
 import random
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+
+
+def _is_replay_buffer(obj):
+    return hasattr(obj, "sample_balanced") and hasattr(obj, "__len__")
 
 
 class ReplayBuffer:
@@ -32,7 +36,8 @@ class ReplayBuffer:
     
     def __init__(self, buffer_size_per_task=200):
         self.buffer_size = buffer_size_per_task
-        self.stored_data = []
+        self.stored_data = []  # flat list of (x, y)
+        self.task_indices = []  # list of lists storing indices per task
     
     def add_task(self, task_dataset):
         """Add samples from a new task to the buffer"""
@@ -41,12 +46,74 @@ class ReplayBuffer:
             min(self.buffer_size, len(task_dataset))
         )
         samples = [task_dataset[i] for i in indices]
+        start_idx = len(self.stored_data)
         self.stored_data.extend(samples)
+        task_range = list(range(start_idx, start_idx + len(samples)))
+        self.task_indices.append(task_range)
         print(f"   💾 Replay buffer: {len(self.stored_data)} total samples")
     
+    class _DatasetView:
+        def __init__(self, buffer):
+            self._buffer = buffer
+
+        def __len__(self):
+            return len(self._buffer)
+
+        def __iter__(self):
+            return iter(self._buffer.stored_data)
+
+        def __getitem__(self, index):
+            return self._buffer.stored_data[index]
+
+        def sample_balanced(self, total_samples):
+            return self._buffer.sample_balanced(total_samples)
+
     def get_dataset(self):
-        """Get all stored samples"""
-        return self.stored_data
+        """Get a view over stored samples (supports balanced sampling)."""
+        return ReplayBuffer._DatasetView(self)
+
+    def __len__(self):
+        return len(self.stored_data)
+
+    def empty(self):
+        return len(self.stored_data) == 0
+
+    def sample_balanced(self, total_samples):
+        """Sample a task-balanced mini-batch from the buffer."""
+        if self.empty() or total_samples <= 0:
+            return []
+
+        active_tasks = [idxs for idxs in self.task_indices if idxs]
+        if not active_tasks:
+            return []
+
+        num_tasks = len(active_tasks)
+        base = max(1, total_samples // num_tasks)
+        remainder = max(0, total_samples - base * num_tasks)
+
+        batch_indices = []
+        for task_id, indices in enumerate(active_tasks):
+            k = min(len(indices), base)
+            if k > 0:
+                batch_indices.extend(random.sample(indices, k))
+
+        # distribute remainder (with replacement when necessary)
+        for task_id, indices in enumerate(active_tasks):
+            if remainder <= 0:
+                break
+            if not indices:
+                continue
+            take = min(remainder, len(indices))
+            batch_indices.extend(random.sample(indices, take))
+            remainder -= take
+
+        # if we still owe samples, fall back to random choices with replacement
+        while len(batch_indices) < total_samples:
+            task_pool = [idx for idxs in active_tasks for idx in idxs]
+            batch_indices.append(random.choice(task_pool))
+
+        random.shuffle(batch_indices)
+        return [self.stored_data[i] for i in batch_indices]
 
 
 def evaluate_models(nn1, nn2, loader, device='cuda'):
@@ -85,7 +152,7 @@ def evaluate_models(nn1, nn2, loader, device='cuda'):
     return correct1 / total, correct2 / total
 
 
-def train_task_with_replay(nn1, nn2, train_loader, replay_loader,
+def train_task_with_replay(nn1, nn2, train_loader, replay_source,
                             opt1, opt2, ce_loss, kl_loss,
                             device='cuda',
                             epochs=5,
@@ -101,7 +168,7 @@ def train_task_with_replay(nn1, nn2, train_loader, replay_loader,
         nn1: Fast learning network
         nn2: Consolidation network
         train_loader: DataLoader for current task
-        replay_loader: List of samples from previous tasks
+        replay_source: ReplayBuffer or list of samples from previous tasks
         opt1: Optimizer for NN1
         opt2: Optimizer for NN2
         ce_loss: Cross-entropy loss function
@@ -122,12 +189,21 @@ def train_task_with_replay(nn1, nn2, train_loader, replay_loader,
             xb, yb = xb.to(device), yb.to(device)
             
             # Mix current task with replay data
-            if (replay_loader is not None and len(replay_loader) > 0
-                    and random.random() < replay_ratio):
-                replay_batch = random.sample(
-                    replay_loader,
-                    min(len(xb), len(replay_loader))
-                )
+            has_replay = False
+            if replay_source is not None:
+                try:
+                    has_replay = len(replay_source) > 0
+                except TypeError:
+                    has_replay = False
+
+            if has_replay and random.random() < replay_ratio:
+                if _is_replay_buffer(replay_source):
+                    replay_batch = replay_source.sample_balanced(len(xb))
+                else:
+                    replay_batch = random.sample(
+                        replay_source,
+                        min(len(xb), len(replay_source))
+                    )
                 replay_x = torch.stack([x for x, y in replay_batch])
                 replay_x = replay_x.to(device)
                 replay_y = torch.tensor([y for x, y in replay_batch])
@@ -151,20 +227,21 @@ def train_task_with_replay(nn1, nn2, train_loader, replay_loader,
                 logits2 = nn2(xb, summary.detach())
                 loss_ce2 = ce_loss(logits2, yb)
                 
-                # Knowledge distillation from NN1 to NN2
-                soft_teacher = F.softmax(
-                    logits1.detach() / temperature,
-                    dim=-1
-                )
-                soft_student = F.log_softmax(
-                    logits2 / temperature,
-                    dim=-1
-                )
-                loss_kl = kl_loss(soft_student, soft_teacher)
-                loss_kl = loss_kl * (temperature ** 2)
-                
-                loss2 = (1.0 - lambda_distill) * loss_ce2
-                loss2 = loss2 + lambda_distill * loss_kl
+                if lambda_distill > 0:
+                    soft_teacher = F.softmax(
+                        logits1.detach() / temperature,
+                        dim=-1
+                    )
+                    soft_student = F.log_softmax(
+                        logits2 / temperature,
+                        dim=-1
+                    )
+                    loss_kl = kl_loss(soft_student, soft_teacher)
+                    loss_kl = loss_kl * (temperature ** 2)
+                    loss2 = (1.0 - lambda_distill) * loss_ce2
+                    loss2 = loss2 + lambda_distill * loss_kl
+                else:
+                    loss2 = loss_ce2
                 
                 if not (torch.isnan(loss2) or torch.isinf(loss2)):
                     opt2.zero_grad()
@@ -191,7 +268,7 @@ def consolidate_nn2(nn1, nn2, replay_data, opt2, ce_loss, kl_loss,
     Args:
         nn1: Fast learning network (frozen, acts as teacher)
         nn2: Consolidation network (trainable)
-        replay_data: List of samples from all previous tasks
+    replay_data: ReplayBuffer, dataset view, or list of past samples
         opt2: Optimizer for NN2
         ce_loss: Cross-entropy loss function
         kl_loss: KL divergence loss function
@@ -202,42 +279,62 @@ def consolidate_nn2(nn1, nn2, replay_data, opt2, ce_loss, kl_loss,
         temperature: Temperature for knowledge distillation
         grad_clip: Gradient clipping threshold
     """
-    if len(replay_data) == 0:
+    if replay_data is None:
+        return
+
+    if _is_replay_buffer(replay_data):
+        total_replay = len(replay_data)
+    else:
+        total_replay = len(replay_data)
+
+    if total_replay == 0:
         return
     
-    print(f"   🧠 NN2 Consolidation: {len(replay_data)} samples, "
+    print(f"   🧠 NN2 Consolidation: {total_replay} samples, "
           f"{consolidation_epochs} epochs")
-    
-    replay_loader = DataLoader(
-        replay_data,
-        batch_size=batch_size,
-        shuffle=True
-    )
-    
+
+    steps_per_epoch = max(1, math.ceil(total_replay / batch_size))
     nn1.eval()
     nn2.train()
-    
+
     for epoch in range(consolidation_epochs):
-        for xb, yb in replay_loader:
-            xb, yb = xb.to(device), yb.to(device)
-            
-            # Get teacher predictions from NN1 (frozen)
+        for _ in range(steps_per_epoch):
+            if _is_replay_buffer(replay_data):
+                batch = replay_data.sample_balanced(batch_size)
+            else:
+                if len(replay_data) == 0:
+                    continue
+                indices = random.sample(
+                    range(len(replay_data)),
+                    k=min(batch_size, len(replay_data))
+                )
+                batch = [replay_data[i] for i in indices]
+
+            if not batch:
+                continue
+
+            xb = torch.stack([sample[0] for sample in batch]).to(device)
+            yb = torch.tensor([sample[1] for sample in batch]).to(device)
+
+            # Get teacher features/predictions from NN1 (frozen)
             with torch.no_grad():
-                logits1, summary = nn1(xb)
-            
-            # Train NN2 to match NN1's predictions
+                if lambda_distill > 0:
+                    logits1, summary = nn1(xb)
+                else:
+                    _, summary = nn1(xb)
+
             logits2 = nn2(xb, summary)
             loss_ce = ce_loss(logits2, yb)
-            
-            # Knowledge distillation
-            soft_teacher = F.softmax(logits1 / temperature, dim=-1)
-            soft_student = F.log_softmax(logits2 / temperature, dim=-1)
-            loss_kl = kl_loss(soft_student, soft_teacher)
-            loss_kl = loss_kl * (temperature ** 2)
-            
-            loss = (1.0 - lambda_distill) * loss_ce
-            loss = loss + lambda_distill * loss_kl
-            
+
+            if lambda_distill > 0:
+                soft_teacher = F.softmax(logits1 / temperature, dim=-1)
+                soft_student = F.log_softmax(logits2 / temperature, dim=-1)
+                loss_kl = kl_loss(soft_student, soft_teacher)
+                loss_kl = loss_kl * (temperature ** 2)
+                loss = (1.0 - lambda_distill) * loss_ce + lambda_distill * loss_kl
+            else:
+                loss = loss_ce
+
             if not (torch.isnan(loss) or torch.isinf(loss)):
                 opt2.zero_grad()
                 loss.backward()
