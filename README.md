@@ -33,8 +33,8 @@ FSC-Net is a dual-timescale continual-learning framework. The system separates r
 - **Slow Network (NN2)**: A consolidation network that ingests the raw input and NN1’s summary, then rehearses replayed data to stabilise long-term knowledge.
 
 **Headline Results (from the NeurIPS submission):**
-- Split-MNIST (10 seeds): NN2 reaches **91.46% ± 0.84%** retention vs. NN1’s 87.48% ± 1.92% (paired $p < 10^{-6}$).
-- Split-CIFAR-10 (5 seeds): NN2 delivers **34.38% ± 0.67%** retention, improving by ~10.5 points over NN1.
+- Split-MNIST (30 seeds): NN2 reaches **91.71% ± 0.62%** retention vs. NN1's 87.43% ± 1.27% (paired $t=23.585$, $p < 1×10^{-10}$).
+- Split-CIFAR-10 (5 seeds): NN2 delivers **33.31% ± 0.38%** retention with +8.20pp gain over NN1's 25.11% ± 1.61% (paired $t=9.75$, $p < 10^{-3}$). Note: absolute performance remains below 50% chance baseline, highlighting need for stronger backbones on complex visual data.
 
 **Key Insight:** Offline consolidation performs best with **pure replay (λ = 0)**—distillation during consolidation reintroduces recency bias. Knowledge distillation remains helpful during task training (λ = 0.3).
 
@@ -196,10 +196,10 @@ for task_id, (train_loader, test_loader) in enumerate(tasks):
 
 | Benchmark | Tasks | NN1 Retention | NN2 Retention | Improvement | Notes |
 |-----------|-------|---------------|---------------|-------------|-------|
-| **Split-MNIST** | 5 | 87.48% ± 1.92% | **91.46% ± 0.84%** | +3.98pp | 10 seeds, paired $p < 10^{-6}$ |
-| **Split-CIFAR-10** | 5 | 23.93% ± 0.95% | **34.38% ± 0.67%** | +10.45pp | 5 seeds, paired $p = 0.0003$ |
+| **Split-MNIST** | 5 | 87.43% ± 1.27% | **91.71% ± 0.62%** | +4.27pp | 30 seeds, paired $t=23.585$, $p < 1×10^{-10}$ |
+| **Split-CIFAR-10** | 5 | 25.11% ± 1.61% | **33.31% ± 0.38%** | +8.20pp | 5 seeds, paired $t=9.75$, $p < 10^{-3}$ |
 
-### Baseline Comparisons (Split-MNIST, 10 seeds)
+### Baseline Comparisons (Split-MNIST, 30 seeds)
 
 | Method | Retention (± std) | Forgetting (± std) |
 |--------|-------------------|---------------------|
@@ -207,14 +207,16 @@ for task_id, (train_loader, test_loader) in enumerate(tasks):
 | Replay-only | 78.4% ± 2.8% | 18.2% ± 2.1% |
 | EWC | 82.1% ± 2.1% | 14.3% ± 1.8% |
 | SI | 81.5% ± 2.4% | 15.1% ± 2.0% |
-| **FSC-Net (NN1)** | 87.48% ± 1.92% | 9.8% ± 1.5% |
-| **FSC-Net (NN2)** | **91.46% ± 0.84%** | **6.5% ± 0.7%** |
+| **FSC-Net (NN1)** | 87.43% ± 1.27% | 9.8% ± 1.5% |
+| **FSC-Net (NN2)** | **91.71% ± 0.62%** | **6.5% ± 0.7%** |
 
 ### Key Findings
 
 1. **Methodology over architecture**: Simple NN1 MLPs outperform similarity-gated variants by ~1.2pp.
-2. **Pure replay wins**: Consolidation with λ = 0 yields +1.26pp on MNIST (significant) and +1.76pp on CIFAR-10 (trending) versus λ = 0.5.
-3. **Replay buffer is indispensable**: Removing offline consolidation or replay erodes NN2’s advantage (see paper Table 6).
+2. **Pure replay wins**: Consolidation with λ = 0 yields +1.51pp on MNIST (30 seeds, $p=0.021$) and +1.76pp on CIFAR-10 (5 seeds, $p=0.065$) versus λ = 0.5.
+3. **Replay buffer is indispensable**: Removing offline consolidation or replay erodes NN2's advantage (see paper Table 6).
+4. **Statistical rigor**: 30-seed validation on Split-MNIST provides tight confidence intervals (±0.62% std for NN2) and strong statistical significance ($t=23.585$, $p < 1×10^{-10}$).
+5. **CIFAR-10 limitation**: While NN2 shows consistent +8.20pp improvement, absolute performance (33.31%) remains below 50% chance baseline, indicating MLP architectures are insufficient for complex visual tasks.
 
 ---
 
