@@ -2,7 +2,7 @@
 
 **A Dual-Timescale Neural Architecture for Continual Learning and Catastrophic Forgetting Mitigation**
 
-![FSC-Net Architecture](results/simple_mlp/figures/fsc-net%20architecture.png)
+![FSC-Net Architecture](results/simple_mlp/figures/fscnet_architecture.png)
 
 
 
