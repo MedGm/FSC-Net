@@ -12,19 +12,6 @@
 
 ---
 
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Repository Structure](#repository-structure)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Experimental Results](#experimental-results)
-- [Citation](#citation)
-- [License](#license)
-
----
-
 ## 🎯 Overview
 
 FSC-Net is a dual-timescale continual-learning framework. The system separates rapid plasticity from slow consolidation:
