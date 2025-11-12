@@ -18,13 +18,3 @@ plotly>=5.14.0
 # Data Processing
 scikit-learn>=1.2.0
 tqdm>=4.65.0
-
-# Development (optional)
-pytest>=7.3.0
-black>=23.3.0
-flake8>=6.0.0
-mypy>=1.2.0
-
-# Documentation (optional)
-sphinx>=6.2.0
-sphinx-rtd-theme>=1.2.0

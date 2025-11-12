@@ -1,11 +1,9 @@
 % FSC-Net: Fast-Slow Consolidation Networks for Continual Learning
-% November 9, 2025 - Complete Rewrite
+% November 12, 2025 
 
-\documentclass[11pt,a4paper]{article}
-\usepackage[preprint]{neurips_2024}
-\usepackage{amsmath,amssymb,amsfonts}
-\usepackage{graphicx}
-\usepackage{booktabs}
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,graphicx,hyperref,xcolor,booktabs}
 \usepackage{algorithm}
 \usepackage{algorithmic}
 \usepackage{multirow}
@@ -131,6 +129,7 @@ For each task $t$, we train NN1 on current task data $\mathcal{D}_t$ mixed with 
 
 \begin{algorithm}[H]
 \caption{Task Learning with Replay}
+\label{alg:task}
 \begin{algorithmic}[1]
 \FOR{epoch $e = 1$ to $E$}
     \FOR{batch $(x, y)$ from $\mathcal{D}_t$}
@@ -485,10 +484,6 @@ Our key insights are: (1) \textbf{In the MLP regime we studied, training methodo
 
 Future work will explore: (1) scaling to longer task sequences, (2) application to class-incremental and domain-incremental scenarios, (3) parameter-efficient variants through network pruning or distillation, (4) theoretical analysis of why recency bias emerges during consolidation, and (5) extension to convolutional and transformer architectures to achieve practical performance on complex visual benchmarks.
 
-\section*{Acknowledgments}
-
-We thank the anonymous reviewers for their constructive feedback, which strengthened this work significantly.
-
 \bibliographystyle{plain}
 \bibliography{references}
 
@@ -546,7 +541,7 @@ Each configuration was run once on seed~42 (126 total runs). The best-performing
 
 For the updated CIFAR-10 study (seeds 42--46) we report the following aggregate metrics: NN1 retention $25.11\% \pm 1.61\%$, NN2 retention $33.31\% \pm 0.38\%$, absolute gain $+8.20$ percentage points, paired $t$-statistic $9.75$, and $p$-value $6.19 \times 10^{-4}$. The per-task breakdown shows: Task 1: NN1 $4.43\% \pm 2.33\%$, NN2 $38.12\% \pm 3.30\%$; Task 2: NN1 $6.78\% \pm 2.87\%$, NN2 $14.48\% \pm 3.15\%$; Task 3: NN1 $12.0\% \pm 3.57\%$, NN2 $23.71\% \pm 3.79\%$; Task 4: NN1 $20.63\% \pm 3.00\%$, NN2 $34.58\% \pm 4.96\%$; Task 5 (current): NN1 $81.71\% \pm 1.11\%$, NN2 $55.64\% \pm 3.75\%$. Full per-seed data: \texttt{results/simple\_mlp/csv/cifar10\_5seeds\_20251111\_165812.csv}. Figure~\ref{fig:mnist_results} is accompanied by an analogous CIFAR-10 visualization in \texttt{results/simple\_mlp/figures/cifar10\_5seeds\_20251111\_165803.png}.
 
-The $\lambda$ investigation (Table~\ref{tab:lambda_comparison}) used 10 seeds (42--51) for Split-MNIST with full results in \texttt{lambda\_zero\_investigation\_20251110\_194805.csv}, confirming $\lambda=0.0$ (91.46\% ± 0.84\%) outperforms $\lambda=0.5$ (90.20\% ± 1.67\%) by +1.26pp. The 30-seed Split-MNIST validation (seeds 42--71, Table~\ref{tab:mnist}) achieved slightly higher retention (91.71\% ± 0.62\%) with tighter variance.
+The $\lambda$ investigation (Table~\ref{tab:consolidation_lambda}) used 10 seeds (42--51) for the initial study, with full results in \texttt{lambda\_zero\_investigation\_20251110\_194805.csv}, confirming $\lambda = 0.0$ (91.46\% $\pm$ 0.84\%) outperforms $\lambda = 0.5$ (90.20\% $\pm$ 1.67\%) by +1.26pp. The 30-seed Split-MNIST validation (seeds 42--71, Table~\ref{tab:mnist}) achieved slightly higher retention (91.71\% $\pm$ 0.62\%) with tighter variance.
 
 \subsection{Reproducibility}
 
