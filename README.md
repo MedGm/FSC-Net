@@ -3,7 +3,7 @@
 **A Dual-Timescale Neural Architecture for Continual Learning and Catastrophic Forgetting Mitigation**
 
 ![FSC-Net Architecture](results/simple_mlp/figures/fscnet_architecture.png)
-
+[![arXiv](https://img.shields.io/badge/arXiv-2511.11707-b31b1b.svg)](https://arxiv.org/abs/2511.11707)
 
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -12,7 +12,7 @@
 
 ---
 
-## 🎯 Overview
+## Overview
 
 FSC-Net is a dual-timescale continual-learning framework. The system separates rapid plasticity from slow consolidation:
 
@@ -27,7 +27,7 @@ FSC-Net is a dual-timescale continual-learning framework. The system separates r
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 - **Dual-timescale optimisation**: NN1 updates rapidly while NN2 consolidates cautiously, reducing interference.
 - **Architecture-agnostic methodology**: Simple MLPs match or beat more complex NN1 variants; the consolidation protocol is the differentiator.
@@ -37,7 +37,7 @@ FSC-Net is a dual-timescale continual-learning framework. The system separates r
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 FSCNET/
@@ -78,7 +78,7 @@ FSCNET/
 
 ---
 
-## 🔧 Installation
+## Installation
 
 ### Prerequisites
 
@@ -119,7 +119,7 @@ See `requirements.txt` for complete list.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Running Experiments
 
@@ -177,7 +177,7 @@ for task_id, (train_loader, test_loader) in enumerate(tasks):
 
 ---
 
-## 📊 Experimental Results
+## Experimental Results
 
 ### Benchmark Performance
 
@@ -207,7 +207,7 @@ for task_id, (train_loader, test_loader) in enumerate(tasks):
 
 ---
 
-## 📖 Citation
+## Citation
 
 If you use this code in your research, please cite:
 
@@ -216,19 +216,22 @@ If you use this code in your research, please cite:
   title={Fast-Slow Consolidation Networks (FSC-Net): A Dual-Timescale Neural Architecture for Continual Learning and Catastrophic Forgetting Mitigation},
   author={El Gorrim, Mohamed},
   year={2025},
-  note={Under Review}
+  eprint={2511.11707},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  note={Available on arXiv}
 }
 ```
 
 ---
 
-## 📄 License
+##  License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 This work was inspired by:
 - Complementary Learning Systems Theory (McClelland et al., 1995)
@@ -238,7 +241,7 @@ This work was inspired by:
 
 ---
 
-## 📧 Contact
+##  Contact
 
 For questions or collaborations:
 - **Author**: Mohamed El Gorrim
@@ -247,4 +250,4 @@ For questions or collaborations:
 
 ---
 
-**Last Updated**: November 9, 2025
+**Last Updated**: November 18, 2025
