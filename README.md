@@ -3,7 +3,7 @@
 **A Dual-Timescale Neural Architecture for Continual Learning and Catastrophic Forgetting Mitigation**
 
 ![FSC-Net Architecture](results/simple_mlp/figures/fscnet_architecture.png)
-[![arXiv](https://img.shields.io/badge/arXiv-2511.11707-b31b1b.svg)](https://arxiv.org/abs/2511.11707)
+[arXiv:2511.11707](https://arxiv.org/abs/2511.11707)
 
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
@@ -219,7 +219,7 @@ If you use this code in your research, please cite:
   eprint={2511.11707},
   archivePrefix={arXiv},
   primaryClass={cs.LG},
-  note={Available on arXiv}
+  note={Published on arXiv}
 }
 ```
 
